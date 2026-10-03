@@ -10,6 +10,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)  # bcrypt hash, never the real password
     display_name = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -19,9 +21,8 @@ class User(Base):
 
 class Preference(Base):
     """
-    User-chosen style preferences. Note: 'goal' is a self-selected style
-    intent (e.g. 'structure', 'balance', 'elongate', 'relaxed') -- never
-    inferred from a photo or body analysis.
+    User-chosen style preferences. Note: goal, occasion and skin tone are all
+    self-selected from a menu -- never inferred from a photo or body analysis.
     """
 
     __tablename__ = "preferences"
@@ -31,6 +32,7 @@ class Preference(Base):
     style_goal = Column(String(50), default="balance")
     favorite_colors = Column(String(255), default="")
     preferred_occasion = Column(String(50), default="casual")
+    skin_tone = Column(String(20), default="medium")
 
     user = relationship("User", back_populates="preference")
 

@@ -1,144 +1,170 @@
-# Outfit Atelier — Style Checker
+# Outfit Atelier - Style Checker
 
-An on-demand color-coordination checker: point your webcam, click a button when
-you're ready, and get feedback on how your top and bottom pair together — plus
-style tips matched to a goal you choose yourself.
+A simple web app that helps people who are not sure about fashion. Point your
+camera, press one button, and get plain-language feedback: do your top and
+bottom match, is the colour good for your skin tone, and which accessories and
+shoes go with it.
 
-**By design, this app does not:**
-- run automatically or watch you passively — nothing happens until you click "Check my outfit"
-- analyze your body shape, weight, or size
-- give weight-loss/weight-gain advice
+Built for people who have never had anyone to ask "does this look okay?"
 
-**What it does do:**
-- extracts the dominant color from a top region and a bottom region you align yourself
-- scores the pairing using standard color-wheel rules (analogous, complementary, neutral, clashing)
-- shows style tips (structure / balance / elongate / relaxed — cuts, layering, proportion) matched to a goal you pick from a menu, never inferred from your photo
-- keeps a history of your past checks
+**Live demo:** _add your link here after deploying_
 
-## Stack
+## What it does
 
-- **Frontend:** React + TypeScript (Vite), Tailwind CSS
-- **Backend:** Python, FastAPI
-- **MySQL:** structured data — users, style preferences, outfit-check history
-- **MongoDB:** flexible data — the style-tips library, detailed per-check analysis logs
+- **Colour match:** finds the main colour of your top and bottom and tells you, in everyday colour names (navy, mustard, beige...), if they go well together.
+- **Skin-tone advice:** tells you whether the top colour suits your skin tone near the face. *You pick your skin tone from a menu. It is never guessed from your face.*
+- **Other colours that go with it:** if the match is weak, it suggests bottoms to keep your top (or tops to keep your bottom).
+- **Accessories and shoes:** suggestions based on your outfit colours and where you are going (casual, office, formal, evening, festival).
+- **Style tips** for a goal you choose (structure, balance, elongate, relaxed).
+- **Login:** accounts with bcrypt-hashed passwords and JWT tokens. Each user sees only their own history.
+- **History** of past checks.
 
-## Project structure
+**By design, the app does not:**
+- run automatically or watch you. Nothing happens until you press "Check my outfit"
+- analyse your body shape, weight, size or face
+- save your photo. Only the colour values are stored
+
+## Tech stack
+
+| Part | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Backend | Python, FastAPI, Pydantic |
+| Auth | bcrypt (password hashing), PyJWT (login tokens) |
+| MySQL / SQLite | users, preferences, outfit-check history (SQLAlchemy) |
+| MongoDB | style-tips library, detailed analysis logs |
+| Tests | pytest, FastAPI TestClient, GitHub Actions |
+
+## How it works
+
+1. The browser shows the camera with two guide boxes (top and bottom).
+2. When you press the button, React sends one small photo to `POST /api/analyze` with your login token.
+3. FastAPI checks the token, decodes the photo and crops the two boxes.
+4. `color_utils.py` reduces each box to a few colours, picks the main one, converts it to HSV and names it.
+5. Colour-wheel rules (neutral, tonal, complementary, clashing) give a score and a verdict.
+6. `advice.py` turns the colours plus your skin tone and occasion into suggestions. Everything is a visible rule, not a black box.
+7. The full detail goes to MongoDB, a summary row goes to MySQL, and the result goes back to the screen.
 
 ```
 outfit-style-checker/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py            # FastAPI app entrypoint
-│   │   ├── config.py          # env-based settings (DB URLs, mongomock toggle)
-│   │   ├── database.py        # SQLAlchemy engine/session (MySQL or SQLite)
-│   │   ├── mongo.py           # pymongo client (or mongomock for zero-setup dev)
-│   │   ├── models.py          # User, Preference, OutfitCheck (SQL tables)
-│   │   ├── schemas.py         # Pydantic request/response models
-│   │   ├── color_utils.py     # dominant-color extraction + harmony scoring
-│   │   ├── seed_tips.py       # seeds the MongoDB style-tips collection
-│   │   └── routers/           # users, preferences, tips, analyze, history
+│   │   ├── main.py            # FastAPI app; also serves the built website
+│   │   ├── config.py          # settings from environment variables
+│   │   ├── security.py        # bcrypt hashing + JWT login tokens
+│   │   ├── database.py        # SQLAlchemy engine/session
+│   │   ├── mongo.py           # MongoDB client (or mongomock for easy dev)
+│   │   ├── models.py          # User, Preference, OutfitCheck tables
+│   │   ├── schemas.py         # request/response validation
+│   │   ├── color_utils.py     # dominant colour, colour names, harmony score
+│   │   ├── advice.py          # skin-tone, accessory, shoe and colour-pairing rules
+│   │   ├── seed_tips.py       # style tips for MongoDB
+│   │   └── routers/           # auth, preferences, tips, analyze, history
+│   ├── tests/                 # pytest tests
 │   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── api.ts
-│   │   └── components/        # WebcamPanel, ResultCard, GoalPicker, History
-│   └── package.json
-├── docker-compose.yml          # real MySQL + MongoDB for production-style local run
-└── README.md
+├── frontend/                  # React app (builds into backend/app/static)
+├── docker-compose.yml         # real MySQL + MongoDB (optional)
+└── .github/workflows/tests.yml
 ```
 
-## Running it — Quick start (no database installs needed)
+## Run it on your computer
 
-The backend defaults to SQLite + an in-memory Mongo stand-in (`mongomock`), so
-you can run the whole thing with nothing but Python and Node installed.
+You need Python 3.12 and Node.js. No database installs are needed: it uses SQLite and an in-memory MongoDB stand-in by default.
 
-**Backend:**
+**Backend** (terminal 1):
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# Mac/Linux:
-source .venv/bin/activate
-
+# Windows:  .venv\Scripts\activate      Mac/Linux:  source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env        # Windows: copy .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
-The API is now at `http://localhost:8000`. Tips are seeded automatically on first run.
 
-**Frontend** (in a second terminal):
+**Frontend** (terminal 2):
 ```bash
 cd frontend
 npm install
-cp .env.example .env
 npm run dev
 ```
-Open `http://localhost:5173`. Your browser will ask for camera permission — allow it, then click "Check my outfit" to run a check.
+Open http://localhost:5173, create an account and allow the camera.
 
-## Running it with real MySQL + MongoDB
+## Run the tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest -q
+```
+The tests cover the colour rules, the advice rules, password hashing, login, token protection, per-user privacy and the full analyse flow.
+
+## Build the website for production
+
+```bash
+cd frontend
+npm install
+npm run build        # writes the site into backend/app/static
+```
+After this, the backend alone serves both the website and the API from one address. Commit the `backend/app/static` folder so the deploy needs no Node.js.
+
+## Deploy (Render, free plan)
+
+1. Push this project to GitHub (with `backend/app/static` included).
+2. On render.com create a **New Web Service** and pick this repo.
+3. Settings:
+   - **Root Directory:** `backend`
+   - **Language:** Python 3
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Instance type:** Free
+4. Environment variables:
+   - `PYTHON_VERSION` = `3.12.3`
+   - `JWT_SECRET` = a long random value (use Render's Generate button)
+5. Deploy. The camera needs HTTPS, which Render provides.
+
+> On the free plan the disk is temporary, so accounts and history reset when the service restarts, and the first visit after a quiet period can take about a minute. For permanent data use real MySQL and MongoDB (see below).
+
+## Use real MySQL and MongoDB
 
 ```bash
 docker compose up -d
 ```
-
-This starts MySQL on `localhost:3306` and MongoDB on `localhost:27017` (credentials in `docker-compose.yml`). Then edit `backend/.env`:
-
+Then set these in `backend/.env`:
 ```
 DATABASE_URL=mysql+pymysql://outfit_user:outfit_pass@localhost:3306/outfit_checker
 USE_MONGOMOCK=false
 MONGO_URI=mongodb://localhost:27017
 ```
 
-Restart the backend (`uvicorn app.main:app --reload --port 8000`) — it will create the MySQL tables automatically and seed the Mongo tips collection on first boot.
+## API
 
-## API reference
+| Method | Path | Login needed | Description |
+|---|---|---|---|
+| GET | `/api/health` | no | Health check |
+| POST | `/api/auth/register` | no | Create account, returns a token |
+| POST | `/api/auth/login` | no | Log in, returns a token |
+| GET | `/api/auth/me` | yes | Current user |
+| GET / PUT | `/api/preferences` | yes | Skin tone, occasion, style goal |
+| GET | `/api/tips?goal=...` | no | Style tips for a goal |
+| POST | `/api/analyze` | yes | Check an outfit from a photo |
+| GET | `/api/history` | yes | Your past checks |
 
-| Method | Path                          | Description                                  |
-|--------|-------------------------------|------------------------------------------------|
-| GET    | `/api/health`                 | Health check                                    |
-| POST   | `/api/users`                  | Create a user profile (`display_name`)          |
-| GET    | `/api/users/{id}`              | Get a user                                      |
-| GET    | `/api/users/{id}/preferences`  | Get style preferences                           |
-| PUT    | `/api/users/{id}/preferences`  | Update style goal / occasion / favorite colors  |
-| GET    | `/api/tips?goal=...`           | Get tips for a style goal                       |
-| POST   | `/api/analyze`                | Analyze a captured frame (see below)            |
-| GET    | `/api/history/{user_id}`       | Past outfit checks                              |
+Interactive API docs are available at `/docs` when the server is running.
 
-`POST /api/analyze` body:
-```json
-{
-  "user_id": 1,
-  "image_base64": "data:image/jpeg;base64,...",
-  "top_box": [0.28, 0.16, 0.72, 0.42],
-  "bottom_box": [0.28, 0.52, 0.72, 0.85]
-}
-```
-`top_box`/`bottom_box` are fractional crop regions (left, top, right, bottom, each 0–1) — these match the guide boxes drawn over the webcam preview in the frontend.
+## Security notes
 
-## How the color engine works
+- Passwords are hashed with bcrypt and never stored or returned as plain text.
+- Login tokens (JWT) expire after 7 days and are signed with `JWT_SECRET`. Always set your own secret in production.
+- Wrong username and wrong password give the same error message.
+- Every user can read only their own preferences and history.
 
-`backend/app/color_utils.py` crops the two regions you aligned, quantizes each
-to a small palette, and picks the most common non-background color. It then
-converts both colors to HSV and applies color-wheel rules:
-- either color being a neutral (black/white/grey/navy/beige) → always a safe pairing
-- hue difference under 40° → harmonious/tonal
-- hue difference 150–210° → bold complementary contrast
-- everything else → flagged as a closer look, with a suggestion (add a neutral layer, adjust shade, etc.)
+## Ideas for next steps
 
-This is intentionally a transparent, rule-based system — not a black-box model — so the reasoning behind every verdict is inspectable in that one file.
+- Hindi and Kannada language support
+- Gender-specific outfit and accessory suggestions
+- Save favourite outfits and compare checks over time
+- Use a real MySQL/MongoDB host so accounts survive restarts
 
-## Pushing this to GitHub
+## Author
 
-Same steps as your last project:
-
-```bash
-git add .
-git commit -m "Initial commit: outfit style checker"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<your-repo-name>.git
-git push -u origin main
-```
-
-(Create the empty repo first at github.com/new, without a README, to avoid a merge conflict — and make sure you're signed into the correct GitHub account before pushing.)
+Darshini B - [GitHub](https://github.com/darshinibharadhwaj) | [LinkedIn](https://www.linkedin.com/in/darshinia156942a3)

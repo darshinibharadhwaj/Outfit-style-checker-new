@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 export const TOP_BOX: [number, number, number, number] = [0.28, 0.16, 0.72, 0.42];
 export const BOTTOM_BOX: [number, number, number, number] = [0.28, 0.52, 0.72, 0.85];
 
+const MAX_WIDTH = 640; // shrink the photo before sending so it uploads fast on slow mobile data
+
 interface Props {
   onCapture: (imageBase64: string) => void;
   busy: boolean;
@@ -15,48 +17,59 @@ export default function WebcamPanel({ onCapture, busy }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [facing, setFacing] = useState<"user" | "environment">("user");
 
   useEffect(() => {
     let stream: MediaStream | null = null;
+    let cancelled = false;
+    setReady(false);
 
     async function start() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setReady(true);
+          setError(null);
         }
-      } catch (err) {
-        setError("Couldn't access your camera. Check your browser's camera permission for this site.");
+      } catch {
+        setError(
+          "Couldn't open your camera. Please allow camera permission for this website, and use a secure (https) link."
+        );
       }
     }
     start();
 
     return () => {
+      cancelled = true;
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, []);
+  }, [facing]);
 
   const capture = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas || !video.videoWidth) return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-    onCapture(dataUrl);
+    onCapture(canvas.toDataURL("image/jpeg", 0.85));
   };
 
   return (
     <div className="bg-atelier-card border border-atelier-line rounded-2xl p-5">
-      <p className="font-display text-xl text-ink mb-1">On-demand outfit check</p>
+      <p className="font-display text-xl text-ink mb-1">Check your outfit</p>
       <p className="text-ink/50 text-sm font-body mb-4">
-        Align your top and bottom inside the two guide boxes, then click the button below.
-        Nothing is captured until you choose to.
+        Stand back so your top and bottom fit inside the two dashed boxes (a friend can hold the phone
+        with the back camera). Then press the button. Nothing is captured until you press it.
       </p>
 
       {error ? (
@@ -100,13 +113,22 @@ export default function WebcamPanel({ onCapture, busy }: Props) {
 
       <canvas ref={canvasRef} className="hidden" />
 
-      <button
-        onClick={capture}
-        disabled={!ready || busy}
-        className="mt-4 w-full rounded-full bg-clay text-atelier-bg font-body font-semibold py-2.5 disabled:opacity-40 hover:brightness-110 transition"
-      >
-        {busy ? "Analyzing..." : "Check my outfit"}
-      </button>
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={capture}
+          disabled={!ready || busy}
+          className="flex-1 rounded-full bg-clay text-atelier-bg font-body font-semibold py-2.5 disabled:opacity-40 hover:brightness-110 transition"
+        >
+          {busy ? "Checking..." : "Check my outfit"}
+        </button>
+        <button
+          onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
+          disabled={busy}
+          className="rounded-full border border-atelier-line text-ink/70 text-sm px-4 hover:border-ink/40 transition disabled:opacity-40"
+        >
+          Switch camera
+        </button>
+      </div>
     </div>
   );
 }
